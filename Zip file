@@ -1,0 +1,194 @@
+import os, textwrap, zipfile, pandas as pd
+
+base="/mnt/data/loan_approval_ml"
+os.makedirs(base+"/data", exist_ok=True)
+os.makedirs(base+"/templates", exist_ok=True)
+
+# Small educational dataset
+data = [
+[1,25,50000,20000,1,0,0,1],[2,35,70000,30000,1,1,1,1],
+[3,28,35000,15000,0,0,0,0],[4,45,90000,25000,1,1,1,1],
+[5,23,30000,10000,0,0,0,0],[6,31,60000,20000,1,1,0,1],
+[7,40,80000,35000,1,1,1,1],[8,27,42000,18000,1,0,0,0],
+[9,52,95000,40000,1,1,1,1],[10,30,45000,12000,0,1,0,1],
+[11,26,38000,16000,1,0,0,0],[12,38,65000,22000,1,1,1,1],
+[13,24,28000,9000,0,0,0,0],[14,47,85000,30000,1,1,1,1],
+[15,33,55000,18000,1,0,1,1],[16,29,40000,14000,0,0,0,0],
+[17,41,75000,28000,1,1,1,1],[18,36,58000,17000,1,1,0,1],
+[19,22,26000,8000,0,0,0,0],[20,49,88000,32000,1,1,1,1],
+]
+cols=["Applicant_ID","Age","Income","Loan_Amount","Employment","Credit_History","Existing_Loan","Loan_Approved"]
+pd.DataFrame(data, columns=cols).to_csv(base+"/data/loan_approval.csv", index=False)
+
+train = r'''import pandas as pd
+import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+
+df = pd.read_csv("data/loan_approval.csv")
+X = df.drop(columns=["Applicant_ID", "Loan_Approved"])
+y = df["Loan_Approved"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.25, random_state=42, stratify=y
+)
+
+model = RandomForestClassifier(n_estimators=150, random_state=42)
+model.fit(X_train, y_train)
+
+pred = model.predict(X_test)
+print("Accuracy:", round(accuracy_score(y_test, pred), 4))
+print("\nClassification Report:\n", classification_report(y_test, pred, zero_division=0))
+print("Confusion Matrix:\n", confusion_matrix(y_test, pred))
+
+joblib.dump(model, "model.pkl")
+print("\nModel saved as model.pkl")
+'''
+open(base+"/train_model.py","w").write(train)
+
+app = r'''from flask import Flask, render_template, request
+import joblib
+import pandas as pd
+
+app = Flask(__name__)
+model = joblib.load("model.pkl")
+
+@app.route("/", methods=["GET", "POST"])
+def home():
+    result = None
+    probability = None
+    if request.method == "POST":
+        values = {
+            "Age": float(request.form["age"]),
+            "Income": float(request.form["income"]),
+            "Loan_Amount": float(request.form["loan_amount"]),
+            "Employment": int(request.form["employment"]),
+            "Credit_History": int(request.form["credit_history"]),
+            "Existing_Loan": int(request.form["existing_loan"])
+        }
+        X = pd.DataFrame([values])
+        prediction = model.predict(X)[0]
+        probability = round(model.predict_proba(X)[0][1] * 100, 2)
+        result = "Loan Approved" if prediction == 1 else "Loan Not Approved"
+    return render_template("index.html", result=result, probability=probability)
+
+if __name__ == "__main__":
+    app.run(debug=True)
+'''
+open(base+"/app.py","w").write(app)
+
+html = r'''<!DOCTYPE html>
+<html>
+<head>
+<title>Loan Approval Predictor</title>
+<style>
+body{font-family:Arial;background:#111;color:#fff;max-width:650px;margin:40px auto;padding:20px}
+.card{background:#1d1d1d;padding:25px;border-radius:15px}
+input,select,button{width:100%;padding:11px;margin:7px 0 15px;border-radius:7px;border:0}
+button{background:#4f8cff;color:white;font-weight:bold;cursor:pointer}
+.result{padding:15px;background:#292929;border-radius:10px;margin-top:20px}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>Loan Approval Predictor</h1>
+<p>Machine Learning based loan approval prediction.</p>
+<form method="POST">
+<label>Age</label><input type="number" name="age" required>
+<label>Monthly Income</label><input type="number" name="income" required>
+<label>Loan Amount</label><input type="number" name="loan_amount" required>
+<label>Employment (1=Yes, 0=No)</label><select name="employment"><option value="1">Yes</option><option value="0">No</option></select>
+<label>Credit History (1=Good, 0=Poor)</label><select name="credit_history"><option value="1">Good</option><option value="0">Poor</option></select>
+<label>Existing Loan (1=Yes, 0=No)</label><select name="existing_loan"><option value="0">No</option><option value="1">Yes</option></select>
+<button type="submit">Predict Loan Approval</button>
+</form>
+{% if result %}
+<div class="result"><h2>{{ result }}</h2><p>Estimated approval probability: {{ probability }}%</p></div>
+{% endif %}
+</div>
+</body>
+</html>'''
+open(base+"/templates/index.html","w").write(html)
+
+req = """pandas
+scikit-learn
+flask
+joblib
+"""
+open(base+"/requirements.txt","w").write(req)
+
+readme = """# Loan Approval Prediction using Machine Learning
+
+A beginner-friendly Machine Learning project that predicts whether a loan application is likely to be approved.
+
+## Technologies
+- Python
+- Pandas
+- Scikit-learn
+- Random Forest
+- Flask
+- HTML/CSS
+
+## Project Structure
+```text
+loan_approval_ml/
+├── data/
+│   └── loan_approval.csv
+├── templates/
+│   └── index.html
+├── app.py
+├── train_model.py
+├── requirements.txt
+├── model.pkl
+└── README.md
+```
+
+## How to Run
+
+### 1. Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Train the model
+```bash
+python train_model.py
+```
+
+This creates `model.pkl`.
+
+### 3. Start the web app
+```bash
+python app.py
+```
+
+Open the local Flask address shown in the terminal.
+
+## Features
+- Income-based prediction
+- Loan amount
+- Employment status
+- Credit history
+- Existing loan status
+- Random Forest classification
+- Simple web interface
+
+## Note
+This is an educational/demo project. Real lending decisions require much larger, validated datasets, appropriate financial controls, and fairness/privacy review.
+"""
+open(base+"/README.md","w").write(readme)
+
+# create initial model by running training
+import subprocess, sys
+subprocess.run([sys.executable, "train_model.py"], cwd=base, capture_output=True, text=True)
+
+zip_path="/mnt/data/loan_approval_ml_github.zip"
+with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk(base):
+        for f in files:
+            path=os.path.join(root,f)
+            z.write(path, os.path.relpath(path, base))
+
+print(f"Created GitHub-ready project: {zip_path}")
+print("Files:", sorted([os.path.relpath(os.path.join(r,f), base) for r,_,fs in os.walk(base) for f in fs]))
